@@ -95,13 +95,32 @@ functions
         CofR                (0 0 0);
     }
 
-    // Function object "Residual", To see the residual plots
-    // foamMonitor -l ./postProcessing/residuals/0/residuals.dat
-    #includeFunc residuals
+    residuals
+    {
+        type            residuals;
+        libs            ("libutilityFunctionObjects.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        fields          (p U);
+    }
 
-    // Function object "probes", To plot the displacements of the flap
-    // Specify this point in the system/probes file - > (9.45 6.05 0.0)
-    #includeFunc probes
+
+    probes
+    {
+        type            probes;
+        libs            ("libsampling.so");
+
+        writeControl    writeTime;     // or timeStep if you want every step
+        writeInterval   1;
+
+        fields          (U p);         // add whatever you want to sample
+
+        probeLocations
+        (
+            (9.45 6.05 0.0)
+        );
+    }
+
 
 }
 
