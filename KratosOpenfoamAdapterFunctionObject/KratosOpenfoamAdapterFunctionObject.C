@@ -56,7 +56,12 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::read(const dict
 
 bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::execute()
 {
-    debugInfo( runTime_.timeName()  + " : CoSimulation Adapter's function object : execution()", debugLevel);
+    //debugInfo( runTime_.timeName()  + " : CoSimulation Adapter's function object : execution()", debugLevel);
+    debugInfo(
+        Foam::Time::timeName(runTime_.value(), 6)
+    + " : CoSimulation Adapter's function object : execution()",
+        debugLevel
+    );
 
     // Export Load data to CoSimulation
     exportDataToKratos();
@@ -148,22 +153,32 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::readConfig(cons
 
                 struct InterfaceData interfacedata;
 
-                interfacedata.nameOfInterface = interfaceSubdict.lookupType<word>("name");
-                debugInfo( "Name of the coupling interface is = " + interfacedata.nameOfInterface , debugLevel);
+                //interfacedata.nameOfInterface = interfaceSubdict.lookupType<word>("name");
+                Foam::word nameWord;
+                interfaceSubdict.lookup("name") >> nameWord;
 
-                wordList patches = interfaceSubdict.lookupType<wordList>("patches");
+                interfacedata.nameOfInterface = nameWord; // works if nameOfInterface is std::string
+                debugInfo("Name of the coupling interface is = " + interfacedata.nameOfInterface, debugLevel);
+
+                //wordList patches = interfaceSubdict.lookupType<wordList>("patches");
+                Foam::wordList patches;
+                interfaceSubdict.lookup("patches") >> patches;
                 for(auto patch : patches)
                 {
                     interfacedata.patchNames.push_back(patch);
                 }
 
-                wordList importDataIdentifier = interfaceSubdict.lookupType<wordList>("importDataIdentifier");
+                //wordList importDataIdentifier = interfaceSubdict.lookupType<wordList>("importDataIdentifier");
+                Foam::wordList importDataIdentifier;
+                interfaceSubdict.lookup("importDataIdentifier") >> importDataIdentifier;
                 for(auto rData : importDataIdentifier)
                 {
                     interfacedata.importDataIdentifier.push_back(rData);
                 }
 
-                wordList exportDataIdentifier = interfaceSubdict.lookupType<wordList>("exportDataIdentifier");
+                //wordList exportDataIdentifier = interfaceSubdict.lookupType<wordList>("exportDataIdentifier");
+                Foam::wordList exportDataIdentifier;
+                interfaceSubdict.lookup("exportDataIdentifier") >> exportDataIdentifier;
                 for(auto rData : exportDataIdentifier)
                 {
                     interfacedata.exportDataIdentifier.push_back(rData);
@@ -379,27 +394,39 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
 Foam::tmp<Foam::volSymmTensorField> Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::devRhoReff() const
 {
     //For turbulent flows
-    typedef compressible::turbulenceModel cmpTurbModel;
-    typedef incompressible::turbulenceModel icoTurbModel;
+    // typedef compressible::turbulenceModel cmpTurbModel;
+    // typedef incompressible::turbulenceModel icoTurbModel;
+    typedef compressible::momentumTransportModel cmpModel;
+    typedef incompressible::momentumTransportModel icoModel;
 
-    if (mesh_.foundObject<cmpTurbModel>(cmpTurbModel::propertiesName))
+    // if (mesh_.foundObject<cmpTurbModel>(cmpTurbModel::propertiesName))
+    // {
+    //     const cmpTurbModel & turb
+    //     (
+    //         mesh_.lookupObject<cmpTurbModel>(cmpTurbModel::propertiesName)
+    //     );
+
+    //     return turb.devRhoReff();
+
+    // }
+    // else if (mesh_.foundObject<icoTurbModel>(icoTurbModel::propertiesName))
+    // {
+    //     const incompressible::turbulenceModel& turb
+    //     (
+    //         mesh_.lookupObject<icoTurbModel>(icoTurbModel::propertiesName)
+    //     );
+
+    //     return rho()*turb.devReff();
+    // }
+    if (mesh_.foundObject<cmpModel>(cmpModel::propertiesName))
     {
-        const cmpTurbModel & turb
-        (
-            mesh_.lookupObject<cmpTurbModel>(cmpTurbModel::propertiesName)
-        );
-
-        return turb.devRhoReff();
-
+        const cmpModel& model(mesh_.lookupObject<cmpModel>(cmpModel::propertiesName));
+        return model.devRhoReff();
     }
-    else if (mesh_.foundObject<icoTurbModel>(icoTurbModel::propertiesName))
+    else if (mesh_.foundObject<icoModel>(icoModel::propertiesName))
     {
-        const incompressible::turbulenceModel& turb
-        (
-            mesh_.lookupObject<icoTurbModel>(icoTurbModel::propertiesName)
-        );
-
-        return rho()*turb.devReff();
+        const icoModel& model(mesh_.lookupObject<icoModel>(icoModel::propertiesName));
+        return rho()*model.devReff();
     }
     else
     {
@@ -449,44 +476,21 @@ Foam::tmp<Foam::volScalarField> Foam::functionObjects::KratosOpenfoamAdapterFunc
     }
 }
 
-Foam::tmp<Foam::volScalarField> Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::mu() const
+Foam::tmp<Foam::volScalarField> mu() const
 {
-    if (solverType_.compare("incompressible") == 0)
+    if (solverType_ == "incompressible")
     {
-        typedef immiscibleIncompressibleTwoPhaseMixture iitpMixture;
-        if (mesh_.foundObject<iitpMixture>("mixture"))
-        {
-            const iitpMixture& mixture
-            (
-                mesh_.lookupObject<iitpMixture>("mixture")
-            );
-
-            return mixture.mu();
-        }
-        else
-        {
-            const dictionary& FSIDict = dict_.subOrEmptyDict("parameters");
-
-            dimensionedScalar nu(FSIDict.lookup("nu"));
-
-            return tmp<volScalarField>
-            (
-                new volScalarField
-                (
-                    nu*rho()
-                )
-            );
-        }
-
+        const dictionary& FSIDict = dict_.subOrEmptyDict("parameters");
+        dimensionedScalar nu(FSIDict.lookup("nu"));
+        return tmp<volScalarField>(new volScalarField(nu*rho()));
     }
-    else if (solverType_.compare("compressible") == 0)
+    else if (solverType_ == "compressible")
     {
         return mesh_.lookupObject<volScalarField>("thermo:mu");
     }
     else
     {
-        FatalErrorInFunction << "Exiting the simulation: correct mu not found" << exit(FatalError);
-
+        FatalErrorInFunction << "Correct mu not found" << exit(FatalError);
         return volScalarField::null();
     }
 }

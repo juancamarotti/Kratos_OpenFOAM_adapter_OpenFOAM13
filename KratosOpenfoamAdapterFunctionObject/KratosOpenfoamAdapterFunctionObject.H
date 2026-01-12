@@ -55,15 +55,27 @@ SourceFiles
 // Displacement Calculation related
 #include "pointMesh.H"
 #include "pointPatchField.H"
-#include "fvCFD.H"
+//#include "fvCFD.H"
 #include "fixedValuePointPatchFields.H"
+
+#include "fvMesh.H"
+#include "volFields.H"
+#include "surfaceFields.H"
+#include "dictionary.H"
+#include "Time.H"
+
+#include "fvc.H"
+#include "fvm.H"
 
 // Force Calculation related
 #include "pointFields.H"
 #include "vectorField.H"
-#include "immiscibleIncompressibleTwoPhaseMixture.H"
-#include "turbulentTransportModel.H"
-#include "turbulentFluidThermoModel.H"
+// #include "immiscibleIncompressibleTwoPhaseMixture.H"
+// #include "turbulentTransportModel.H"
+// #include "turbulentFluidThermoModel.H"
+#include "momentumTransportModel.H"
+// #include "incompressibleMomentumTransportModel.H"
+// #include "compressibleMomentumTransportModel.H"
 
 // CoSimIO header file
 #include "co_sim_io_mpi.hpp"
