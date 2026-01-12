@@ -1,33 +1,28 @@
 EXE_INC = \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
+    -I$(LIB_SRC)/finiteVolume/cfdTools/lnInclude \
     -I$(LIB_SRC)/meshTools/lnInclude \
-    -I$(LIB_SRC)/transportModels/ \
-    -I$(LIB_SRC)/transportModels/incompressible/lnInclude \
-    -I$(LIB_SRC)/transportModels/compressible/lnInclude \
-    -I$(LIB_SRC)/transportModels/twoPhaseMixture/lnInclude \
-    -I$(LIB_SRC)/transportModels/interfaceProperties/lnInclude \
-    -I$(LIB_SRC)/transportModels/immiscibleIncompressibleTwoPhaseMixture/lnInclude \
+    -I$(LIB_SRC)/MomentumTransportModels/momentumTransportModels/lnInclude \
+    -I$(LIB_SRC)/physicalProperties/lnInclude \
     -I$(LIB_SRC)/thermophysicalModels/basic/lnInclude \
-    -I$(LIB_SRC)/TurbulenceModels/turbulenceModels/lnInclude \
-    -I$(LIB_SRC)/TurbulenceModels/compressible/lnInclude \
-    -I$(LIB_SRC)/TurbulenceModels/incompressible/lnInclude \
     -I$(LIB_SRC)/triSurface/lnInclude \
-    -I$(MPI_ROOT) \
-    -I$(MPI_ROOT2) \
-    -I$(HOME)/Documents/MS/CoSimIO/co_sim_io \
-    -I$(HOME)/Documents/MS/CoSimIO \
-    -L$(HOME)/Documents/MS/CoSimIO/bin
+    -I/home/camarotti/Software/CoSimIO/co_sim_io \
+    -I/home/camarotti/Software/CoSimIO/co_sim_io/includes \
+    -I/home/camarotti/Software/CoSimIO \
+    -I$(MPI_ARCH_PATH)/include \
+    -I/usr/lib/x86_64-linux-gnu/openmpi/include \
+    -I/home/camarotti/Software/CoSimIO/external_libraries
+
 
 LIB_LIBS = \
-    -lfluidThermophysicalModels \
-    -lincompressibleTransportModels \
-    -lcompressibleTransportModels \
-    -lturbulenceModels \
-    -lincompressibleTurbulenceModels \
-    -lcompressibleTurbulenceModels \
-    -limmiscibleIncompressibleTwoPhaseMixture \
-    -lspecie \
-    -lfileFormats \
     -lfiniteVolume \
     -lmeshTools \
-    -lco_sim_io_mpi
+    -lMomentumTransportModels \
+    -lincompressibleMomentumTransportModels \
+    -lcompressibleMomentumTransportModels \
+    -lfluidThermophysicalModels \
+    -lspecie \
+    -lfileFormats \
+    -L/home/camarotti/Software/CoSimIO/build \
+    -lco_sim_io_mpi \
+    -lco_sim_io
