@@ -87,6 +87,13 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::write()
     return true;
 }
 
+Foam::wordList
+Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::fields() const
+{
+    // Return the names of fields you create/write, or empty if none
+    return Foam::wordList();
+}
+
 
 // ********************************* Auxiliar functions for configuration ****************************************//
 bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::readConfig(const dictionary& dict)
@@ -199,7 +206,16 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::readConfig(cons
         for (std::size_t i = 0; i < interfaces_.at(j).patchNames.size(); i++)
         {
             // Get the patchID
-            int patchID = mesh_.boundaryMesh().findPatchID((interfaces_.at(j).patchNames).at(i));
+            const Foam::word patchName((interfaces_.at(j).patchNames).at(i)); // ensure Foam::word
+            Foam::label patchID = mesh_.boundaryMesh().findIndex(patchName);
+
+            if (patchID < 0)
+            {
+                FatalErrorInFunction
+                    << "Patch not found: " << patchName << nl
+                    << "Available patches: " << mesh_.boundaryMesh().names() << nl
+                    << exit(FatalError);
+            }
 
             // Throw an error if the patch was not found
             if (patchID == -1)
@@ -308,7 +324,7 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
         IOobject
         (
             "Force",
-            mesh_.time().timeName(),
+            mesh_.time().name(),
             mesh_,
             IOobject::NO_READ,
             IOobject::AUTO_WRITE
@@ -323,10 +339,12 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
     );
 
     // 1.Stress tensor boundary field
-    tmp<volSymmTensorField> tdevRhoReff(devRhoReff());
-    const volSymmTensorField::Boundary& devRhoReffb
+    //tmp<volSymmTensorField> tdevRhoReff(devRhoReff());
+    tmp<surfaceVectorField> tDevTau(devTau());
+
+    const surfaceVectorField::Boundary& devTaub
     (
-        tdevRhoReff().boundaryField()
+        tDevTau().boundaryField()
     );
 
     // 2.Density boundary field
@@ -363,7 +381,7 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
         }
 
         // Viscous forces
-        Force_->boundaryFieldRef()[patchID] += (surface) & devRhoReffb[patchID];
+        Force_->boundaryFieldRef()[patchID] += devTaub[patchID];
 
         // Writing this forces into vecotrs to export to CoSimulation
         int bufferIndex = 0;
@@ -391,53 +409,81 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
     return true;
 }
 
-Foam::tmp<Foam::volSymmTensorField> Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::devRhoReff() const
+// Foam::tmp<Foam::volSymmTensorField> Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::devRhoReff() const
+// {
+//     //For turbulent flows
+//     // typedef compressible::turbulenceModel cmpTurbModel;
+//     // typedef incompressible::turbulenceModel icoTurbModel;
+//     // typedef compressible::momentumTransportModel cmpModel;
+//     // typedef incompressible::momentumTransportModel icoModel;
+//     using cmpModel = Foam::compressibleMomentumTransportModel;
+//     using icoModel = Foam::incompressibleMomentumTransportModel;
+
+
+//     // if (mesh_.foundObject<cmpTurbModel>(cmpTurbModel::propertiesName))
+//     // {
+//     //     const cmpTurbModel & turb
+//     //     (
+//     //         mesh_.lookupObject<cmpTurbModel>(cmpTurbModel::propertiesName)
+//     //     );
+
+//     //     return turb.devRhoReff();
+
+//     // }
+//     // else if (mesh_.foundObject<icoTurbModel>(icoTurbModel::propertiesName))
+//     // {
+//     //     const incompressible::turbulenceModel& turb
+//     //     (
+//     //         mesh_.lookupObject<icoTurbModel>(icoTurbModel::propertiesName)
+//     //     );
+
+//     //     return rho()*turb.devReff();
+//     // }
+//     if (mesh_.foundObject<cmpModel>(cmpModel::propertiesName))
+//     {
+//         const cmpModel& model(mesh_.lookupObject<cmpModel>(cmpModel::propertiesName));
+//         return model.devRhoReff();
+//     }
+//     else if (mesh_.foundObject<icoModel>(icoModel::propertiesName))
+//     {
+//         const icoModel& model(mesh_.lookupObject<icoModel>(icoModel::propertiesName));
+//         return rho()*model.devReff();
+//     }
+//     else
+//     {
+//         // For laminar flows get the velocity
+//         const volVectorField & U
+//         (
+//             mesh_.lookupObject<volVectorField>("U")
+//         );
+
+//         return -mu()*dev(twoSymm(fvc::grad(U)));
+//     }
+// }
+Foam::tmp<Foam::surfaceVectorField>
+Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::devTau() const
 {
-    //For turbulent flows
-    // typedef compressible::turbulenceModel cmpTurbModel;
-    // typedef incompressible::turbulenceModel icoTurbModel;
-    typedef compressible::momentumTransportModel cmpModel;
-    typedef incompressible::momentumTransportModel icoModel;
+    typedef Foam::incompressible::momentumTransportModel icoModel;
+    typedef Foam::compressible::momentumTransportModel   cmpModel;
 
-    // if (mesh_.foundObject<cmpTurbModel>(cmpTurbModel::propertiesName))
-    // {
-    //     const cmpTurbModel & turb
-    //     (
-    //         mesh_.lookupObject<cmpTurbModel>(cmpTurbModel::propertiesName)
-    //     );
+    const Foam::word& modelName = Foam::momentumTransportModel::typeName;
 
-    //     return turb.devRhoReff();
-
-    // }
-    // else if (mesh_.foundObject<icoTurbModel>(icoTurbModel::propertiesName))
-    // {
-    //     const incompressible::turbulenceModel& turb
-    //     (
-    //         mesh_.lookupObject<icoTurbModel>(icoTurbModel::propertiesName)
-    //     );
-
-    //     return rho()*turb.devReff();
-    // }
-    if (mesh_.foundObject<cmpModel>(cmpModel::propertiesName))
+    if (mesh_.foundObject<icoModel>(modelName))
     {
-        const cmpModel& model(mesh_.lookupObject<cmpModel>(cmpModel::propertiesName));
-        return model.devRhoReff();
+        const icoModel& model = mesh_.lookupObject<icoModel>(modelName);
+        return model.devSigma();   // incompressible API
     }
-    else if (mesh_.foundObject<icoModel>(icoModel::propertiesName))
+    else if (mesh_.foundObject<cmpModel>(modelName))
     {
-        const icoModel& model(mesh_.lookupObject<icoModel>(icoModel::propertiesName));
-        return rho()*model.devReff();
+        const cmpModel& model = mesh_.lookupObject<cmpModel>(modelName);
+        return model.devTau();     // compressible API
     }
-    else
-    {
-        // For laminar flows get the velocity
-        const volVectorField & U
-        (
-            mesh_.lookupObject<volVectorField>("U")
-        );
 
-        return -mu()*dev(twoSymm(fvc::grad(U)));
-    }
+    FatalErrorInFunction
+        << "No momentumTransportModel found in the objectRegistry."
+        << exit(FatalError);
+
+    return Foam::tmp<Foam::surfaceVectorField>(); // keeps compiler happy
 }
 
 Foam::tmp<Foam::volScalarField> Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::rho() const
@@ -458,7 +504,7 @@ Foam::tmp<Foam::volScalarField> Foam::functionObjects::KratosOpenfoamAdapterFunc
                 IOobject
                 (
                     "rho",
-                    mesh_.time().timeName(),
+                    mesh_.time().name(),
                     mesh_,
                     IOobject::NO_READ,
                     IOobject::NO_WRITE
@@ -476,7 +522,8 @@ Foam::tmp<Foam::volScalarField> Foam::functionObjects::KratosOpenfoamAdapterFunc
     }
 }
 
-Foam::tmp<Foam::volScalarField> mu() const
+Foam::tmp<Foam::volScalarField>
+Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::mu() const
 {
     if (solverType_ == "incompressible")
     {
@@ -686,7 +733,16 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportMeshToCos
         // which is then Export to CoSimulation
         for(std::size_t i = 0; i < interfaces_.at(j).patchIDs.size(); i++)
         {
-            label patchIndex1 = mesh_.boundaryMesh().findPatchID((interfaces_.at(j).patchNames).at(i));
+            //label patchIndex1 = mesh_.boundaryMesh().findPatchID((interfaces_.at(j).patchNames).at(i));
+            Foam::word patchName((interfaces_.at(j).patchNames).at(i));
+            Foam::label patchIndex1 = mesh_.boundaryMesh().findIndex(patchName);
+
+            if (patchIndex1 < 0)
+            {
+                FatalErrorInFunction
+                    << "Patch not found: " << patchName
+                    << exit(FatalError);
+            }
             const UList<label> &bfaceCells1 = mesh_.boundaryMesh()[patchIndex1].faceCells();
             label patchIndex2 = 0;
 
@@ -945,7 +1001,7 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::importDataFromK
             Foam::pointVectorField* point_disp;
 
             point_disp = const_cast<pointVectorField*>( &mesh_.lookupObject<pointVectorField>("pointDisplacement") );
-            label patchIndex = mesh_.boundaryMesh().findPatchID((interfaces_.at(i).patchNames).at(j));
+            label patchIndex = mesh_.boundaryMesh().findIndex((interfaces_.at(i).patchNames).at(j));
             fixedValuePointPatchVectorField& pointDisplacementFluidPatch = refCast<fixedValuePointPatchVectorField>(point_disp->boundaryFieldRef()[patchIndex]);
 
             int iterator = 0;

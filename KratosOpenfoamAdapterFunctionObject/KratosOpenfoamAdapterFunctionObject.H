@@ -63,6 +63,7 @@ SourceFiles
 #include "surfaceFields.H"
 #include "dictionary.H"
 #include "Time.H"
+#include "tmp.H"
 
 #include "fvc.H"
 #include "fvm.H"
@@ -76,6 +77,8 @@ SourceFiles
 #include "momentumTransportModel.H"
 // #include "incompressibleMomentumTransportModel.H"
 // #include "compressibleMomentumTransportModel.H"
+#include "compressibleMomentumTransportModel.H"
+#include "incompressibleMomentumTransportModel.H"
 
 // CoSimIO header file
 #include "co_sim_io_mpi.hpp"
@@ -107,7 +110,8 @@ private:
     const Foam::Time& runTime_;
 
     //- Copy of OpenFOAM's Control Dict
-    const dictionary& dict_;
+    // const dictionary& dict_;
+    dictionary dict_;
 
     //- Member variables required for CoSimIO
     std::string connection_name;
@@ -325,7 +329,8 @@ protected:
     bool calculateForces(std::size_t);
 
     //- Stress tensor (see the OpenFOAM "Forces" function object)
-    Foam::tmp<Foam::volSymmTensorField> devRhoReff() const;
+    //Foam::tmp<Foam::volSymmTensorField> devRhoReff() const;
+    Foam::tmp<Foam::surfaceVectorField> devTau() const;
 
     //- To get or read the value of density
     Foam::tmp<Foam::volScalarField> rho() const;
@@ -387,6 +392,10 @@ public:
 
     //- Write data after each loop/ Currently not doing anything
     virtual bool write();
+
+    //- List of fields this functionObject writes/uses (required by OF-13)
+    virtual Foam::wordList fields() const;
+
 };
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
