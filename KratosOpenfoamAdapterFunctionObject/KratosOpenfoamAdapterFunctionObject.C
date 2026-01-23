@@ -972,6 +972,14 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportDataToKra
         connect_info.Clear();
         connect_info.Set("identifier", interfaces_.at(i).exportDataIdentifier[0]);
         connect_info.Set("connection_name", connection_name);
+        // std::cout << "data_to_send size = " << interfaces_.at(i).data_to_send.size() << "\n";
+
+        // std::cout << "data_to_send first values: ";
+        // for (std::size_t k = 0; k < std::min<std::size_t>(interfaces_.at(i).data_to_send.size(), 12); ++k)
+        // {
+        //     std::cout << interfaces_.at(i).data_to_send[k] << " ";
+        // }
+        // std::cout << std::endl;
         connect_info = CoSimIO::ExportData(connect_info, interfaces_.at(i).data_to_send);
 
         //debugInfo("Data has been exported from OpenFOAM to CoSimulation (for coupling interface name = " + interfaces_.at(i).nameOfInterface + ") , Force values with array size = " + std::to_string(interfaces_.at(i).data_to_send.size()), debugLevel);
@@ -996,21 +1004,50 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::importDataFromK
         debugInfo( "Data has been imported from CoSimulation to OpenFOAM: (for coupling interface name = " + interfaces_.at(i).nameOfInterface + ")" , debugLevel);
 
         // Get the displacement on the patch(for every patch in the interface) and assign it those values received from CoSimulation
+        // Get the displacement on the patch (for every patch in the interface) and assign values received from CoSimulation
         for (std::size_t j = 0; j < interfaces_.at(i).patchNames.size(); j++)
         {
-            Foam::pointVectorField* point_disp;
-
-            point_disp = const_cast<pointVectorField*>( &mesh_.lookupObject<pointVectorField>("pointDisplacement") );
-            label patchIndex = mesh_.boundaryMesh().findIndex((interfaces_.at(i).patchNames).at(j));
-            fixedValuePointPatchVectorField& pointDisplacementFluidPatch = refCast<fixedValuePointPatchVectorField>(point_disp->boundaryFieldRef()[patchIndex]);
-
-            int iterator = 0;
-            forAll(point_disp->boundaryFieldRef()[patchIndex] ,k)
+            // pointDisplacement may not exist during functionObjectList::start()
+            if (!mesh_.foundObject<pointVectorField>("pointDisplacement"))
             {
-                pointDisplacementFluidPatch[k][0] = interfaces_.at(i).data_to_recv[iterator++];
-                pointDisplacementFluidPatch[k][1] = interfaces_.at(i).data_to_recv[iterator++];
-                if (dim ==3)
-                    pointDisplacementFluidPatch[k][2] = interfaces_.at(i).data_to_recv[iterator++];
+                Info<< "[AdapterInfo] pointDisplacement not yet available in objectRegistry. "
+                    << "Skipping displacement import for now." << nl;
+                return; // or 'continue;' if you want to skip only this patch
+            }
+
+            // Get non-const reference (no const_cast)
+            pointVectorField& point_disp =
+                mesh_.lookupObjectRef<pointVectorField>("pointDisplacement");
+
+            const Foam::word patchName((interfaces_.at(i).patchNames).at(j));
+            const Foam::label patchIndex = mesh_.boundaryMesh().findIndex(patchName);
+
+            if (patchIndex < 0)
+            {
+                FatalErrorInFunction
+                    << "Patch not found: " << patchName << Foam::exit(FatalError);
+            }
+
+            // Make sure the patch field type supports assignment
+            auto& patchField = point_disp.boundaryFieldRef()[patchIndex];
+
+            // If you KNOW it is fixedValue, keep refCast. Otherwise use a safer cast/check.
+            fixedValuePointPatchVectorField& pointDisplacementFluidPatch =
+                refCast<fixedValuePointPatchVectorField>(patchField);
+
+            std::size_t iterator = 0;
+            forAll(pointDisplacementFluidPatch, k)
+            {
+                pointDisplacementFluidPatch[k].x() = interfaces_.at(i).data_to_recv[iterator++];
+                pointDisplacementFluidPatch[k].y() = interfaces_.at(i).data_to_recv[iterator++];
+                if (dim == 3)
+                {
+                    pointDisplacementFluidPatch[k].z() = interfaces_.at(i).data_to_recv[iterator++];
+                }
+                else
+                {
+                    pointDisplacementFluidPatch[k].z() = 0.0;
+                }
             }
         }
 

@@ -55,6 +55,7 @@ SourceFiles
 // Displacement Calculation related
 #include "pointMesh.H"
 #include "pointPatchField.H"
+#include "IOobject.H"
 //#include "fvCFD.H"
 #include "fixedValuePointPatchFields.H"
 
