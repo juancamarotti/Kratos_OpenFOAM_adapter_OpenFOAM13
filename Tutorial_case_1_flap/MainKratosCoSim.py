@@ -7,9 +7,24 @@ from CoSimulationAnalysis to do modifications
 Check also "kratos/python_scripts/analysis-stage.py" for available methods that can be overridden
 """
 
-parameter_file_name = "ProjectParametersCoSim.json"
-with open(parameter_file_name,'r') as parameter_file:
-    parameters = KM.Parameters(parameter_file.read())
+class CustomCoSimulationAnalysis(CoSimulationAnalysis):
+    def __init__(self, parameters):
+        """Call the base class constructor."""
+        super().__init__(parameters)
+    
+    def Initialize(self):
+        super().Initialize()
 
-simulation = CoSimulationAnalysis(parameters)
-simulation.Run()
+        solver = self._GetSolver()
+        fluid = solver.model.solver_wrappers.get("Openfoam_Kratos_Wrapper")
+        for node in fluid.model.GetModelPart("interface_flap").Nodes:
+            print(node)
+    
+
+if __name__ == "__main__":
+
+    with open("ProjectParametersCoSim.json",'r') as parameter_file:
+        parameters = KM.Parameters(parameter_file.read())
+
+    simulation = CustomCoSimulationAnalysis(parameters)
+    simulation.Run()
