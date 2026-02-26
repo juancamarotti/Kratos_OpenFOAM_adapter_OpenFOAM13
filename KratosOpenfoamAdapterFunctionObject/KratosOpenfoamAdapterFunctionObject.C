@@ -41,7 +41,7 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::read(const dict
 {
     if(readConfig(dict))
     {
-        // Coneect to CoSimulation
+        // Connect to CoSimulation
         connectKratos();
 
         // Export Mesh related data to CoSimulation in the form of ModelPart (only once)
@@ -56,7 +56,6 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::read(const dict
 
 bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::execute()
 {
-    //debugInfo( runTime_.timeName()  + " : CoSimulation Adapter's function object : execution()", debugLevel);
     debugInfo(
         Foam::Time::timeName(runTime_.value(), 6)
     + " : CoSimulation Adapter's function object : execution()",
@@ -279,10 +278,11 @@ std::string Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::determin
 
 bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::is_same_points(Foam::vector& pointX, Foam::vector& pointY)
 {
-    if(pointX[0] == pointY[0] && pointX[1] == pointY[1] && pointX[2] == pointY[2])
-        return true;
-    else
-        return false;
+    const scalar tol = 1e-12;
+    return
+        mag(pointX.x() - pointY.x()) < tol &&
+        mag(pointX.y() - pointY.y()) < tol &&
+        mag(pointX.z() - pointY.z()) < tol;
 }
 
 int Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::compare_nodes(Foam::vector& pointX, std::size_t interface_index)
@@ -341,7 +341,6 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
     // 1.Stress tensor boundary field
     //tmp<volSymmTensorField> tdevRhoReff(devRhoReff());
     tmp<surfaceVectorField> tDevTau(devTau());
-
     const surfaceVectorField::Boundary& devTaub
     (
         tDevTau().boundaryField()
@@ -381,7 +380,33 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::calculateForces
         }
 
         // Viscous forces
-        Force_->boundaryFieldRef()[patchID] += devTaub[patchID];
+        //Force_->boundaryFieldRef()[patchID] += devTaub[patchID];
+        const scalarField& Af = mesh_.boundary()[patchID].magSf();  // per-face area magnitudes
+        Force_->boundaryFieldRef()[patchID] += rhob[patchID] * Af * devTaub[patchID];
+
+        // Compute the pressure force component
+        vector FpSum(Zero);
+
+        const vectorField& Sf = mesh_.boundary()[patchID].Sf();   // area vectors
+
+        forAll(pb[patchID], f)
+        {
+            // kinematic pressure -> multiply by rho
+            FpSum += rhob[patchID][f] * pb[patchID][f] * Sf[f];
+        }
+
+        Info << GREEN << "Total pressure force on patch "
+            << patchID << " = " << FpSum << RESET << nl;
+
+
+        // Compute the viscous force component
+        vector FviscSum(Zero);
+        forAll(devTaub[patchID], f)
+        {
+            FviscSum += rhob[patchID][f] * Af[f] * devTaub[patchID][f];
+        }
+
+        Info << GREEN << "Total viscous force on patch " << patchID << " = " << FviscSum << RESET << nl;
 
         // Writing this forces into vecotrs to export to CoSimulation
         int bufferIndex = 0;
@@ -713,6 +738,12 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportMeshToCos
         // Make CoSimIO::ModelPart and push in the array of model_part_interfaces
         model_part_interfaces_.push_back(CoSimIO::make_unique<CoSimIO::ModelPart>(interfaces_.at(j).nameOfInterface));
 
+        Info << "[Adapter] ModelPart '" << model_part_interfaces_[0]->Name() << "' : "
+            << "Nodes=" << model_part_interfaces_[0]->NumberOfNodes()
+            << " Elements=" << model_part_interfaces_[0]->NumberOfElements()
+            << nl;
+
+
         // MPI Exchange to know "Node-start Index" for all the ranks
         Pstream::exchange<scalarList, scalar>(sendDataNumNodeIndex, recvDataNumNodeIndex);
         Pstream::exchange<scalarList, scalar>(sendDataNumElementIndex, recvDataNumElementIndex);
@@ -922,7 +953,7 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportMeshToCos
                 model_part_interfaces_.at(j)->CreateNewNode( nodei.getNodeIndexForCoSim(), nodePosition[0], nodePosition[1], nodePosition[2]);
             }
         }
-        //debugInfo( "[COSIM]Total number of Nodes formed in coupling interface " + interfaces_.at(j).nameOfInterface +  " (local, Ghost, total) = (" + std::to_string(model_part_interfaces_.at(j)->NumberOfLocalNodes()) + " , " + std::to_string(model_part_interfaces_.at(j)->NumberOfGhostNodes()) +  " , " + std::to_string(model_part_interfaces_.at(j)->NumberOfNodes()) + " )" , debugLevel);
+        debugInfo( "[COSIM]Total number of Nodes formed in coupling interface " + interfaces_.at(j).nameOfInterface +  " (local, Ghost, total) = (" + std::to_string(model_part_interfaces_.at(j)->NumberOfLocalNodes()) + " , " + std::to_string(model_part_interfaces_.at(j)->NumberOfGhostNodes()) +  " , " + std::to_string(model_part_interfaces_.at(j)->NumberOfNodes()) + " )" , debugLevel);
 
         // Export InterfaceMesh/ModelPart to CoSimulation using CoSimIO
         info.Clear();
@@ -946,7 +977,7 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::resizeDataVecto
 {
     for(std::size_t i=0; i < num_interfaces_; i++)
     {
-        interfaces_.at(i).data_to_send.resize((interfaces_.at(i).numElements) * dim);
+        interfaces_.at(i).data_to_send.resize((interfaces_.at(i).numElements) * dim); // Why is resizing considering the number of elements and not nodes?
     }
 }
 
@@ -972,14 +1003,6 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportDataToKra
         connect_info.Clear();
         connect_info.Set("identifier", interfaces_.at(i).exportDataIdentifier[0]);
         connect_info.Set("connection_name", connection_name);
-        // std::cout << "data_to_send size = " << interfaces_.at(i).data_to_send.size() << "\n";
-
-        // std::cout << "data_to_send first values: ";
-        // for (std::size_t k = 0; k < std::min<std::size_t>(interfaces_.at(i).data_to_send.size(), 12); ++k)
-        // {
-        //     std::cout << interfaces_.at(i).data_to_send[k] << " ";
-        // }
-        // std::cout << std::endl;
         connect_info = CoSimIO::ExportData(connect_info, interfaces_.at(i).data_to_send);
 
         //debugInfo("Data has been exported from OpenFOAM to CoSimulation (for coupling interface name = " + interfaces_.at(i).nameOfInterface + ") , Force values with array size = " + std::to_string(interfaces_.at(i).data_to_send.size()), debugLevel);
@@ -990,70 +1013,115 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::exportDataToKra
 
 void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::importDataFromKratos()
 {
-    for (std::size_t i = 0; i < interfaces_.size(); i++)
+    if (!mesh_.foundObject<pointVectorField>("pointDisplacement"))
     {
-        // Import the displacement array from the CoSimulation
+        Info<< "[AdapterInfo] pointDisplacement not available in objectRegistry at time "
+            << Foam::Time::timeName(runTime_.value(), 6)
+            << ". Skipping displacement import." << nl;
+        return;
+    }
+
+    pointVectorField& point_disp =
+        mesh_.lookupObjectRef<pointVectorField>("pointDisplacement");
+
+    for (std::size_t i = 0; i < interfaces_.size(); ++i)
+    {
+        // Import displacement
         CoSimIO::Info connect_info;
-        connect_info.Clear();
         connect_info.Set("identifier", interfaces_.at(i).importDataIdentifier[0]);
         connect_info.Set("connection_name", connection_name);
         connect_info = CoSimIO::ImportData(connect_info, interfaces_.at(i).data_to_recv);
-        COSIMIO_CHECK_EQUAL(interfaces_.at(i).data_to_recv.size() , (interfaces_.at(i).numNodes) * dim );
 
-        //debugInfo( "Data has been imported from CoSimulation to OpenFOAM: (for coupling interface name = " + interfaces_.at(i).nameOfInterface + ") , Disp values with array size = " + std::to_string(interfaces_.at(i).data_to_recv.size()) , debugLevel);
-        debugInfo( "Data has been imported from CoSimulation to OpenFOAM: (for coupling interface name = " + interfaces_.at(i).nameOfInterface + ")" , debugLevel);
+        COSIMIO_CHECK_EQUAL
+        (
+            interfaces_.at(i).data_to_recv.size(),
+            interfaces_.at(i).numNodes * dim
+        );
 
-        // Get the displacement on the patch(for every patch in the interface) and assign it those values received from CoSimulation
-        // Get the displacement on the patch (for every patch in the interface) and assign values received from CoSimulation
-        for (std::size_t j = 0; j < interfaces_.at(i).patchNames.size(); j++)
+        debugInfo(
+            "Data imported from CoSimulation (interface = " + interfaces_.at(i).nameOfInterface + ")",
+            debugLevel
+        );
+
+        const auto& recv = interfaces_.at(i).data_to_recv;
+        std::size_t iterator = 0; // per interface
+
+        for (std::size_t j = 0; j < interfaces_.at(i).patchNames.size(); ++j)
         {
-            // pointDisplacement may not exist during functionObjectList::start()
-            if (!mesh_.foundObject<pointVectorField>("pointDisplacement"))
-            {
-                Info<< "[AdapterInfo] pointDisplacement not yet available in objectRegistry. "
-                    << "Skipping displacement import for now." << nl;
-                return; // or 'continue;' if you want to skip only this patch
-            }
-
-            // Get non-const reference (no const_cast)
-            pointVectorField& point_disp =
-                mesh_.lookupObjectRef<pointVectorField>("pointDisplacement");
-
-            const Foam::word patchName((interfaces_.at(i).patchNames).at(j));
+            const Foam::word patchName(interfaces_.at(i).patchNames.at(j));
             const Foam::label patchIndex = mesh_.boundaryMesh().findIndex(patchName);
 
             if (patchIndex < 0)
             {
-                FatalErrorInFunction
-                    << "Patch not found: " << patchName << Foam::exit(FatalError);
+                FatalErrorInFunction << "Patch not found: " << patchName << exit(FatalError);
             }
 
-            // Make sure the patch field type supports assignment
             auto& patchField = point_disp.boundaryFieldRef()[patchIndex];
 
-            // If you KNOW it is fixedValue, keep refCast. Otherwise use a safer cast/check.
-            fixedValuePointPatchVectorField& pointDisplacementFluidPatch =
+            Info << "Patch '" << patchName << "' pointDisplacement:"
+                 << " type=" << patchField.type()
+                 << " size=" << patchField.size() << nl;
+
+            if (!isA<fixedValuePointPatchVectorField>(patchField))
+            {
+                FatalErrorInFunction
+                    << "pointDisplacement on patch " << patchName
+                    << " is not fixedValue (is " << patchField.type() << ")"
+                    << exit(FatalError);
+            }
+
+            auto& pointDisplacementFluidPatch =
                 refCast<fixedValuePointPatchVectorField>(patchField);
 
-            std::size_t iterator = 0;
+            // print first up to 3 values from current iterator position
+            const Foam::label nPrint =
+                (pointDisplacementFluidPatch.size() < 3 ? pointDisplacementFluidPatch.size() : 3);
+
+            Info << "[AdapterDebug] recvSize=" << recv.size()
+                 << " iteratorStart=" << iterator
+                 << " patchPoints=" << pointDisplacementFluidPatch.size() << nl;
+
+            for (Foam::label kk = 0; kk < nPrint; ++kk)
+            {
+                const std::size_t base = iterator + std::size_t(kk)*std::size_t(dim);
+                Info << "  recv[" << base << "] = ("
+                     << recv[base] << ", " << recv[base+1] << ", "
+                     << ((dim==3) ? recv[base+2] : 0.0) << ")" << nl;
+            }
+
+            // assign with bounds check
+            const std::size_t needed = std::size_t(pointDisplacementFluidPatch.size()) * std::size_t(dim);
+            if (iterator + needed > recv.size())
+            {
+                FatalErrorInFunction
+                    << "Not enough displacement data for patch " << patchName
+                    << ". Need " << needed << " values from iterator=" << iterator
+                    << ", recvSize=" << recv.size()
+                    << exit(FatalError);
+            }
+
             forAll(pointDisplacementFluidPatch, k)
             {
-                pointDisplacementFluidPatch[k].x() = interfaces_.at(i).data_to_recv[iterator++];
-                pointDisplacementFluidPatch[k].y() = interfaces_.at(i).data_to_recv[iterator++];
-                if (dim == 3)
-                {
-                    pointDisplacementFluidPatch[k].z() = interfaces_.at(i).data_to_recv[iterator++];
-                }
-                else
-                {
-                    pointDisplacementFluidPatch[k].z() = 0.0;
-                }
+                pointDisplacementFluidPatch[k].x() = recv[iterator++];
+                pointDisplacementFluidPatch[k].y() = recv[iterator++];
+                pointDisplacementFluidPatch[k].z() = (dim == 3) ? recv[iterator++] : 0.0;
             }
+
+            pointDisplacementFluidPatch.evaluate(); // often helpful
         }
 
-        debugInfo( "Displacement replacement ended for coupling interface : " + interfaces_.at(i).nameOfInterface, debugLevel);
+        if (iterator != recv.size())
+        {
+            WarningInFunction
+                << "Did not consume all displacement data for interface "
+                << interfaces_.at(i).nameOfInterface << ". Consumed " << iterator
+                << " of " << recv.size() << nl;
+        }
     }
+
+    point_disp.correctBoundaryConditions(); // optional, but useful while debugging
 }
+
 
 }//namespace Foam
 

@@ -90,6 +90,13 @@ std::cout << "in line " << __LINE__ << " : " << a                 \
     << " is not equal to " << b << std::endl;                     \
 }
 
+// Colors for printing
+#define RED    "\033[31m"
+#define GREEN  "\033[32m"
+#define YELLOW "\033[33m"
+#define BLUE   "\033[34m"
+#define RESET  "\033[0m"
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
