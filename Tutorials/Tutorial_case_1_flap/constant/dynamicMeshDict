@@ -1,0 +1,44 @@
+/* FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      dynamicMeshDict;
+}
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dynamicFvMesh   dynamicMotionSolverFvMesh;
+
+motionSolverLibs ("libfvMotionSolvers.so");
+
+motionSolver    displacementLaplacian;
+
+displacementLaplacianCoeffs
+{
+    diffusivity quadratic inverseDistance (flap);
+} */
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "constant";
+    object      dynamicMeshDict;
+}
+
+mover
+{
+    type          motionSolver;
+
+    // Only this library is required
+    libs          ("libfvMotionSolvers.so");
+
+    motionSolver  displacementSBRStress;
+
+    displacementSBRStressCoeffs
+    {
+        diffusivity quadratic inverseDistance (flap);
+    }
+}
