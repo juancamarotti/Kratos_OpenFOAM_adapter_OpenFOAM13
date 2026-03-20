@@ -65,8 +65,23 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::execute()
     // Export Load data to CoSimulation
     exportDataToKratos();
 
+    const scalar t    = runTime_.value();
+    const scalar dt   = runTime_.deltaTValue();
+    const scalar tEnd = runTime_.endTime().value();
+
+    Info << "[Adapter] Current time = " << t << ", Time step = " << dt << ", End time = " << tEnd << nl;
+
+    // If we are at (or effectively at) the last step, do not wait for Kratos
+    if (t + 0.5*dt >= tEnd)
+    {
+        Info << "[Adapter] Last step -> skipping ImportData\n";
+        return true;
+    }
+
     // Import Displacement data from CoSimulation
+    Info << "[Adapter] ImportData BEGIN\n";
     importDataFromKratos();
+    Info << "[Adapter] ImportData END\n";
 
     return true;
 }
@@ -76,6 +91,7 @@ bool Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::end()
     debugInfo("CoSimulation Adapter's function object : end()", debugLevel);
 
     // DisConnection between OpenFOAM and Kratos-CoSimulation using CoSimIO
+    Info << "Disconnecting from CoSimulation" << nl;
     disconnectKratos();
 
     return true;
@@ -674,6 +690,8 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::conversionEleme
 // *********************************** Auxiliar functions for interaction with CoSimulation *************************//
 void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::connectKratos()
 {
+    if (is_connected_) return;
+
     // Connection between openFOAM and Kratos-CoSimulation using CoSimIO (ONLY ONE TIME for multiple interfaces)
     CoSimIO::Info settings;
     settings.Set("my_name", "Openfoam_Adapter");
@@ -685,14 +703,18 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::connectKratos()
 
     if(TotalNumOfProcesses == 1)
     {
+        Info << "Running in Serial. Connecting to CoSimulation using File IO" << nl;
         connect_info = CoSimIO::Connect(settings);
     }
     else{
+        Info << "Running in Parallel. Connecting to CoSimulation using MPI" << nl;
         connect_info = CoSimIO::ConnectMPI(settings, MPI_COMM_WORLD);
     }
 
     COSIMIO_CHECK_EQUAL(connect_info.Get<int>("connection_status"), CoSimIO::ConnectionStatus::Connected);
     connection_name = connect_info.Get<std::string>("connection_name");
+
+    is_connected_ = true;
 }
 
 void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::disconnectKratos()
@@ -701,6 +723,7 @@ void Foam::functionObjects::KratosOpenfoamAdapterFunctionObject::disconnectKrato
     CoSimIO::Info disconnect_settings;
     disconnect_settings.Set("connection_name", connection_name);
     connect_info = CoSimIO::Disconnect(disconnect_settings);
+    debugInfo("Disconnected from CoSimulation", debugLevel);
     COSIMIO_CHECK_EQUAL(connect_info.Get<int>("connection_status"), CoSimIO::ConnectionStatus::Disconnected);
 
 }

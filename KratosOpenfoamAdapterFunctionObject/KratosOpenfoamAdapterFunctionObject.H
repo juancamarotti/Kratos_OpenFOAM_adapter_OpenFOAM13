@@ -116,6 +116,7 @@ class KratosOpenfoamAdapterFunctionObject
 private:
     //- Copy of OpenFOAM's RunTime Time object
     const Foam::Time& runTime_;
+    bool is_connected_ = false;
 
     //- Copy of OpenFOAM's Control Dict
     // const dictionary& dict_;
@@ -385,7 +386,7 @@ public:
         const dictionary& dict
     );
 
-    //- Destructor
+    // Destructor
     virtual ~KratosOpenfoamAdapterFunctionObject();
 
     // ************************************** FunctionObject's Member Functions ****************************************** //
