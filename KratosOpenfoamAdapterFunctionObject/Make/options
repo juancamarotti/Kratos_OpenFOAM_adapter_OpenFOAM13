@@ -1,3 +1,11 @@
+COSIMIO_ROOT ?= $(HOME)/Software/CoSimIO
+
+ifeq ($(wildcard $(COSIMIO_ROOT)),)
+$(error COSIMIO_ROOT='$(COSIMIO_ROOT)' does not exist)
+else
+$(info CoSimIO found at: $(COSIMIO_ROOT))
+endif
+
 EXE_INC = \
     -I$(LIB_SRC)/finiteVolume/lnInclude \
     -I$(LIB_SRC)/finiteVolume/cfdTools/lnInclude \
@@ -8,13 +16,12 @@ EXE_INC = \
     -I$(LIB_SRC)/physicalProperties/lnInclude \
     -I$(LIB_SRC)/thermophysicalModels/basic/lnInclude \
     -I$(LIB_SRC)/triSurface/lnInclude \
-    -I/home/camarotti/Software/CoSimIO/co_sim_io \
-    -I/home/camarotti/Software/CoSimIO/co_sim_io/includes \
-    -I/home/camarotti/Software/CoSimIO \
+    -I$(COSIMIO_ROOT) \
+    -I$(COSIMIO_ROOT)/co_sim_io \
+    -I$(COSIMIO_ROOT)/co_sim_io/includes \
+    -I$(COSIMIO_ROOT)/external_libraries \
     -I$(MPI_ARCH_PATH)/include \
-    -I/usr/lib/x86_64-linux-gnu/openmpi/include \
-    -I/home/camarotti/Software/CoSimIO/external_libraries
-
+    -I/usr/lib/x86_64-linux-gnu/openmpi/include
 
 LIB_LIBS = \
     -lfiniteVolume \
@@ -23,6 +30,6 @@ LIB_LIBS = \
     -lfluidThermophysicalModels \
     -lspecie \
     -lfileFormats \
-    -L/home/camarotti/Software/CoSimIO/build \
+    -L$(COSIMIO_ROOT)/build \
     -lco_sim_io_mpi \
     -lco_sim_io
